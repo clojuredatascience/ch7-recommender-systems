@@ -1,24 +1,21 @@
 (ns cljds.ch7.examples
   (:require [cljds.ch7.bloom-filter :refer [bloom-filter bloom-assoc bloom-contains?]]
             [cljds.ch7.data :refer :all]
-            [cljds.ch7.mahout :refer [user-based-recommender user-recommender load-model to-boolean-preferences]]
+            [cljds.ch7.mahout :refer [load-model recommender-builder evaluate-rmse evaluate-ir boolean-recommender-builder plot-ir to-boolean-preferences]]
             [cljds.ch7.minhash :refer [minhasher locality-sensitive-hash lsh-candidates lsh-assoc]]
             [cljds.ch7.slope-one :refer :all]
             [cljds.ch7.sparkling :refer [alternating-least-squares count-ratings parse-ratings training-ratings test-ratings rmse] :as sparkling]
-            [incanter.svg :as svg]
             [clojure.java.io :as io]
             [incanter.charts :as c]
             [incanter.core :as i]
             [incanter.datasets :as d]
             [incanter.stats :as s]
-            [incanter.svg :as svg]
-            [sparkling.core :as spark]
-            [sparkling.conf :as conf])
-  (:import [org.apache.mahout.cf.taste.eval DataModelBuilder RecommenderBuilder]
-           [org.apache.mahout.cf.taste.impl.eval RMSRecommenderEvaluator GenericRecommenderIRStatsEvaluator AverageAbsoluteDifferenceRecommenderEvaluator]
+            [sparkling.conf :as conf]
+            [sparkling.core :as spark])
+  (:import [org.apache.mahout.cf.taste.impl.eval RMSRecommenderEvaluator]
            [org.apache.mahout.cf.taste.impl.neighborhood NearestNUserNeighborhood]
-           [org.apache.mahout.cf.taste.impl.recommender GenericBooleanPrefUserBasedRecommender GenericItemBasedRecommender GenericUserBasedRecommender]
-           [org.apache.mahout.cf.taste.impl.similarity EuclideanDistanceSimilarity TanimotoCoefficientSimilarity UncenteredCosineSimilarity LogLikelihoodSimilarity SpearmanCorrelationSimilarity PearsonCorrelationSimilarity]))
+           [org.apache.mahout.cf.taste.impl.recommender GenericUserBasedRecommender]
+           [org.apache.mahout.cf.taste.impl.similarity EuclideanDistanceSimilarity TanimotoCoefficientSimilarity SpearmanCorrelationSimilarity PearsonCorrelationSimilarity]))
 
 (defn ex-7-1 []
   (->> (io/resource "ua.base")
@@ -93,17 +90,6 @@
          (map #(item-name (.getItemID %))))))
 
 
-(defn recommender-builder [n sim]
-  (reify RecommenderBuilder
-    (buildRecommender [this model]
-      (let [nhood (NearestNUserNeighborhood. n sim model)]
-        (GenericUserBasedRecommender. model nhood sim)))))
-
-(defn evaluate-rmse [builder model]
-  (-> (RMSRecommenderEvaluator.)
-      (.evaluate builder nil model 0.7 1.0)))
-
-
 (defn ex-7-10 []
   (let [model   (load-model "ua.base")
         builder (recommender-builder
@@ -136,32 +122,11 @@
                         :y-label "RMSE")
         (i/view))))
 
-
-(defn evaluate-ir [builder model]
-  (-> (GenericRecommenderIRStatsEvaluator.)
-      (.evaluate builder nil model nil 5
-                 GenericRecommenderIRStatsEvaluator/CHOOSE_THRESHOLD
-                 1.0)
-      (bean)))
-
 (defn ex-7-14 []
   (let [model   (load-model "ua.base")
         builder (recommender-builder
                  10 (EuclideanDistanceSimilarity. model))]
     (evaluate-ir builder model)))
-
-(defn plot-ir [xs stats]
-  (-> (c/xy-plot xs (map :recall stats)
-                 :x-label "Neighbourhood Size"
-                 :y-label "IR Statistic"
-                 :series-label "Recall"
-                 :legend true)
-      (c/add-lines xs (map :precision stats)
-                   :series-label "Precision")
-      (c/add-lines xs
-                   (map :normalizedDiscountedCumulativeGain stats)
-                   :series-label "NDCG")
-      (i/view)))
 
 (defn ex-7-15 []
   (let [model   (load-model "ua.base")
@@ -172,14 +137,6 @@
                     (do (println n)
                         (evaluate-ir builder model))))]
     (plot-ir xs stats)))
-
-
-(defn boolean-recommender-builder [n sim]
-  (reify RecommenderBuilder
-    (buildRecommender [this model]
-      (let [nhood (NearestNUserNeighborhood. n sim model)]
-        (GenericBooleanPrefUserBasedRecommender.
-         model nhood sim)))))
 
 (defn ex-7-16 []
   (let [model   (to-boolean-preferences (load-model "ua.base"))
@@ -479,4 +436,4 @@
       (-> (c/scatter-plot ranks errors
                           :x-label "Rank"
                           :y-label "RMSE")
-          (svg/save-svg "/tmp/7-355.svg")))))
+          (i/view)))))
